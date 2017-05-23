@@ -8,8 +8,8 @@ Codeigniter with Swagger Integration
 
 2)Change these two line your full path in constants.php file
 <ul>
-  <li>a) define('SWAGGER_PATH','http://localhost/codeigniterSwaggerApi/CodeIgniter-3.1.4/index.php/api_doc');</li>
-  <li>b) define('API_SWAGGER_PATH','http://localhost/codeigniterSwaggerApi/CodeIgniter-3.1.4/index.php/api');</li>
+  <li>a) <pre>define('SWAGGER_PATH','http://localhost/codeigniterSwaggerApi/CodeIgniter-3.1.4/index.php/api_doc');</pre></li>
+  <li>b) <pre>define('API_SWAGGER_PATH','http://localhost/codeigniterSwaggerApi/CodeIgniter-3.1.4/index.php/api');</pre></li>
   </ul>
   
   
@@ -49,7 +49,7 @@ Codeigniter with Swagger Integration
           </pre>
                 
 .
-    <h1> Add a Api  with all detail inner "apis" => array( here ) </h1>
+    5) Add a Api  with all detail inner "apis" => array( here )
     
    <pre>
      array(
