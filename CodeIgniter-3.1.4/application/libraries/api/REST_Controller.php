@@ -132,22 +132,14 @@ abstract class REST_Controller extends CI_Controller
 	);
 
 	/**
-	 * Developers can extend this class and add a check in here.
-	 */
-	protected function early_checks()
-	{
-
-	}
-
-	/**
 	 * Constructor function
 	 * @todo Document more please.
 	 */
 	public function __construct()
 	{
-	  
+
 		parent::__construct();
-        
+
 
 		$this->_zlib_oc = @ini_get('zlib.output_compression');
 
@@ -199,7 +191,7 @@ abstract class REST_Controller extends CI_Controller
 		// Which format should the data be returned in?
 		$this->response = new stdClass();
 		$this->response->format = $this->_detect_output_format();
-		
+
 		// Which format should the data be returned in?
 		$this->response->lang = $this->_detect_lang();
 
@@ -252,211 +244,41 @@ abstract class REST_Controller extends CI_Controller
 		}
 	}
 
-	/**
-	 * Remap
-	 *
-	 * Requests are not made to methods directly, the request will be for
-	 * an "object". This simply maps the object and method to the correct
-	 * Controller method.
-	 *
-	 * @param string $object_called
-	 * @param array $arguments The arguments passed to the controller method.
-	 */
-	public function _remap($object_called, $arguments)
-	{
-		// Should we answer if not over SSL?
-		if (config_item('force_https') AND !$this->_detect_ssl())
-		{
-			$this->response(array('status' => false, 'error' => 'Unsupported protocol'), 403);
-		}
-
-		// The object called is not reference by the controller and not a parameter to a single controller.
-		/*
-		$pattern = '/^(.*)\.('.implode('|', array_keys($this->_supported_formats)).')$/';
-		if (preg_match($pattern, $object_called, $matches))
-		{
-			$object_called = $matches[1];
-		}
-		*/
-
-		$request_method =  $this->request->method;
-		$action = $this->router->fetch_method();
-		
-		// TODO - need to do customizations here
-		$controller_method =  $action . "_" . $this->request->method;
-		
-		
-		// Do we want to log this method (if allowed by config)?
-		$log_method = !(isset($this->methods[$controller_method]['log']) AND $this->methods[$controller_method]['log'] == FALSE);
-
-		// Use keys for this method?
-		$use_key = ! (isset($this->methods[$controller_method]['key']) AND $this->methods[$controller_method]['key'] == FALSE);
-
-		// Get that useless shitty key out of here
-		if (config_item('rest_enable_keys') AND $use_key AND $this->_allow === FALSE)
-		{
-			if (config_item('rest_enable_logging') AND $log_method)
-			{
-				$this->_log_request();
-			}
-
-			$this->response(array('status' => false, 'error' => 'Invalid API Key.'), 403);
-		}
-
-		// Sure it exists, but can they do anything with it?
-		if ( ! method_exists($this, $controller_method))
-		{
-			$this->response(array('status' => false, 'error' => 'Unknown method.'), 404);
-		}
-
-		// Doing key related stuff? Can only do it if they have a key right?
-		if (config_item('rest_enable_keys') AND !empty($this->rest->key))
-		{
-			// Check the limit
-			if (config_item('rest_enable_limits') AND !$this->_check_limit($controller_method))
-			{
-				$this->response(array('status' => false, 'error' => 'This API key has reached the hourly limit for this method.'), 401);
-			}
-
-			// If no level is set use 0, they probably aren't using permissions
-			$level = isset($this->methods[$controller_method]['level']) ? $this->methods[$controller_method]['level'] : 0;
-
-			// If no level is set, or it is lower than/equal to the key's level
-			$authorized = $level <= $this->rest->level;
-
-			// IM TELLIN!
-			if (config_item('rest_enable_logging') AND $log_method)
-			{
-				$this->_log_request($authorized);
-			}
-
-			// They don't have good enough perms
-			$authorized OR $this->response(array('status' => false, 'error' => 'This API key does not have enough permissions.'), 401);
-		}
-
-		// No key stuff, but record that stuff is happening
-		else if (config_item('rest_enable_logging') AND $log_method)
-		{
-			$this->_log_request($authorized = TRUE);
-		}
-		
-		// And...... GO!
-		$this->_fire_method(array($this, $controller_method), $arguments);
-	}
-
-	/**
-	 * Fire Method
-	 *
-	 * Fires the designated controller method with the given arguments.
-	 *
-	 * @param array $method The controller method to fire
-	 * @param array $args The arguments to pass to the controller method
-	 */
-	protected function _fire_method($method, $args)
-	{
-		call_user_func_array($method, $args);
-	}
-
-	/**
-	 * Response
-	 *
-	 * Takes pure data and optionally a status code, then creates the response.
-	 *
-	 * @param array $data
-	 * @param null|int $http_code
-	 */
-	public function response($data = array(), $http_code = null)
-	{
-		global $CFG;
-
-		// If data is empty and not code provide, error and bail
-		if (empty($data) && $http_code === null)
-		{
-			$http_code = 404;
-
-			// create the output variable here in the case of $this->response(array());
-			$output = NULL;
-		}
-
-		// If data is empty but http code provided, keep the output empty
-		else if (empty($data) && is_numeric($http_code))
-		{
-			$output = NULL;
-		}
-
-		// Otherwise (if no data but 200 provided) or some data, carry on camping!
-		else
-		{
-			// Is compression requested?
-			if ($CFG->item('compress_output') === TRUE && $this->_zlib_oc == FALSE)
-			{
-				if (extension_loaded('zlib'))
-				{
-					if (isset($_SERVER['HTTP_ACCEPT_ENCODING']) AND strpos($_SERVER['HTTP_ACCEPT_ENCODING'], 'gzip') !== FALSE)
-					{
-						ob_start('ob_gzhandler');
-					}
-				}
-			}
-
-			is_numeric($http_code) OR $http_code = 200;
-
-			// If the format method exists, call and return the output in that format
-			if (method_exists($this, '_format_'.$this->response->format))
-			{
-				// Set the correct format header
-				header('Content-Type: '.$this->_supported_formats[$this->response->format]);
-
-				$output = $this->{'_format_'.$this->response->format}($data);
-			}
-
-			// If the format method exists, call and return the output in that format
-			elseif (method_exists($this->format, 'to_'.$this->response->format))
-			{
-				// Set the correct format header
-				header('Content-Type: '.$this->_supported_formats[$this->response->format]);
-
-				$output = $this->format->factory($data)->{'to_'.$this->response->format}();
-			}
-
-			// Format not supported, output directly
-			else
-			{
-				$output = $data;
-			}
-		}
-
-		header('HTTP/1.1: ' . $http_code);
-		header('Status: ' . $http_code);
-
-		// If zlib.output_compression is enabled it will compress the output,
-		// but it will not modify the content-length header to compensate for
-		// the reduction, causing the browser to hang waiting for more data.
-		// We'll just skip content-length in those cases.
-		if ( ! $this->_zlib_oc && ! $CFG->item('compress_output'))
-		{
-			header('Content-Length: ' . strlen($output));
-		}
-
-		exit($output);
-	}
-
-	/*
-	 * Detect SSL use
-	 *
-	 * Detect whether SSL is being used or not
-	 */
 	protected function _detect_ssl()
 	{
-    		return (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] == "on");
+		return (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] == "on");
 	}
 
-
-	/*
-	 * Detect input format
+	/**
+	 * Detect method
 	 *
-	 * Detect which format the HTTP Body is provided in
+	 * Detect which HTTP method is being used
+	 *
+	 * @return string
 	 */
+	protected function _detect_method()
+	{
+		$method = strtolower($this->input->server('REQUEST_METHOD'));
+
+		if ($this->config->item('enable_emulate_request'))
+		{
+			if ($this->input->post('_method'))
+			{
+				$method = strtolower($this->input->post('_method'));
+			} elseif ($this->input->server('HTTP_X_HTTP_METHOD_OVERRIDE'))
+			{
+				$method = strtolower($this->input->server('HTTP_X_HTTP_METHOD_OVERRIDE'));
+			}
+		}
+
+		if (in_array($method, $this->allowed_http_methods) && method_exists($this, '_parse_' . $method))
+		{
+			return $method;
+		}
+
+		return 'get';
+	}
+
 	protected function _detect_input_format()
 	{
 		if ($this->input->server('CONTENT_TYPE'))
@@ -560,109 +382,11 @@ abstract class REST_Controller extends CI_Controller
 		return config_item('rest_default_format');
 	}
 
-	/**
-	 * Detect method
+	/*
+	 * Detect SSL use
 	 *
-	 * Detect which HTTP method is being used
-	 *
-	 * @return string
+	 * Detect whether SSL is being used or not
 	 */
-	protected function _detect_method()
-	{
-		$method = strtolower($this->input->server('REQUEST_METHOD'));
-
-		if ($this->config->item('enable_emulate_request'))
-		{
-			if ($this->input->post('_method'))
-			{
-				$method = strtolower($this->input->post('_method'));
-			}
-			elseif ($this->input->server('HTTP_X_HTTP_METHOD_OVERRIDE'))
-			{
-				$method = strtolower($this->input->server('HTTP_X_HTTP_METHOD_OVERRIDE'));
-			}
-		}
-
-		if (in_array($method, $this->allowed_http_methods) && method_exists($this, '_parse_' . $method))
-		{
-			return $method;
-		}
-
-		return 'get';
-	}
-
-	/**
-	 * Detect API Key
-	 *
-	 * See if the user has provided an API key
-	 *
-	 * @return boolean
-	 */
-	protected function _detect_api_key()
-	{
-		// Get the api key name variable set in the rest config file
-		$api_key_variable = config_item('rest_key_name');
-
-		// Work out the name of the SERVER entry based on config
-		$key_name = 'HTTP_'.strtoupper(str_replace('-', '_', $api_key_variable));
-
-		$this->rest->key = NULL;
-		$this->rest->level = NULL;
-		$this->rest->user_id = NULL;
-		$this->rest->ignore_limits = FALSE;
-
-		// Find the key from server or arguments
-		if (($key = isset($this->_args[$api_key_variable]) ? $this->_args[$api_key_variable] : $this->input->server($key_name)))
-		{
-			if ( ! ($row = $this->rest->db->where(config_item('rest_key_column'), $key)->get(config_item('rest_keys_table'))->row()))
-			{
-				return FALSE;
-			}
-
-			$this->rest->key = $row->{config_item('rest_key_column')};
-
-			isset($row->user_id) AND $this->rest->user_id = $row->user_id;
-			isset($row->level) AND $this->rest->level = $row->level;
-			isset($row->ignore_limits) AND $this->rest->ignore_limits = $row->ignore_limits;
-
-			/*
-			 * If "is private key" is enabled, compare the ip address with the list
-			 * of valid ip addresses stored in the database.
-			 */
-			if(!empty($row->is_private_key))
-			{
-				// Check for a list of valid ip addresses
-				if(isset($row->ip_addresses))
-				{
-					// multiple ip addresses must be separated using a comma, explode and loop
-					$list_ip_addresses = explode(",", $row->ip_addresses);
-					$found_address = FALSE;
-
-					foreach($list_ip_addresses as $ip_address)
-					{
-						if($this->input->ip_address() == trim($ip_address))
-						{
-							// there is a match, set the the value to true and break out of the loop
-							$found_address = TRUE;
-							break;
-						}
-					}
-
-					return $found_address;
-				}
-				else
-				{
-					// There should be at least one IP address for this private key.
-					return FALSE;
-				}
-			}
-
-			return $row;
-		}
-
-		// No key has been sent
-		return FALSE;
-	}
 
 	/**
 	 * Detect language(s)
@@ -699,83 +423,19 @@ abstract class REST_Controller extends CI_Controller
 		return $lang;
 	}
 
-	/**
-	 * Log request
+
+	/*
+	 * Detect input format
 	 *
-	 * Record the entry for awesomeness purposes
-	 *
-	 * @param boolean $authorized
-	 * @return object
+	 * Detect which format the HTTP Body is provided in
 	 */
-	protected function _log_request($authorized = FALSE)
-	{
-		return $this->rest->db->insert(config_item('rest_logs_table'), array(
-					'uri' => $this->uri->uri_string(),
-					'method' => $this->request->method,
-					'params' => $this->_args ? (config_item('rest_logs_json_params') ? json_encode($this->_args) : serialize($this->_args)) : null,
-					'api_key' => isset($this->rest->key) ? $this->rest->key : '',
-					'ip_address' => $this->input->ip_address(),
-					'time' => function_exists('now') ? now() : time(),
-					'authorized' => $authorized
-				));
-	}
 
 	/**
-	 * Limiting requests
-	 *
-	 * Check if the requests are coming in a tad too fast.
-	 *
-	 * @param string $controller_method The method being called.
-	 * @return boolean
+	 * Developers can extend this class and add a check in here.
 	 */
-	protected function _check_limit($controller_method)
+	protected function early_checks()
 	{
-		// They are special, or it might not even have a limit
-		if ( ! empty($this->rest->ignore_limits) OR !isset($this->methods[$controller_method]['limit']))
-		{
-			// On your way sonny-jim.
-			return TRUE;
-		}
 
-		// How many times can you get to this method an hour?
-		$limit = $this->methods[$controller_method]['limit'];
-
-		// Get data on a keys usage
-		$result = $this->rest->db
-				->where('uri', $this->uri->uri_string())
-				->where('api_key', $this->rest->key)
-				->get(config_item('rest_limits_table'))
-				->row();
-
-		// No calls yet, or been an hour since they called
-		if ( ! $result OR $result->hour_started < time() - (60 * 60))
-		{
-			// Right, set one up from scratch
-			$this->rest->db->insert(config_item('rest_limits_table'), array(
-				'uri' => $this->uri->uri_string(),
-				'api_key' => isset($this->rest->key) ? $this->rest->key : '',
-				'count' => 1,
-				'hour_started' => time()
-			));
-		}
-
-		// They have called within the hour, so lets update
-		else
-		{
-			// Your luck is out, you've called too many times!
-			if ($result->count >= $limit)
-			{
-				return FALSE;
-			}
-
-			$this->rest->db
-					->where('uri', $this->uri->uri_string())
-					->where('api_key', $this->rest->key)
-					->set('count', 'count + 1', FALSE)
-					->update(config_item('rest_limits_table'));
-		}
-
-		return TRUE;
 	}
 
 	/**
@@ -837,154 +497,157 @@ abstract class REST_Controller extends CI_Controller
 	}
 
 	/**
-	 * Parse GET
+	 * @todo document this.
 	 */
-	protected function _parse_get()
+	protected function _prepare_basic_auth()
 	{
-		// Grab proper GET variables
-		parse_str(parse_url($_SERVER['REQUEST_URI'], PHP_URL_QUERY), $get);
-
-		// Merge both the URI segments and GET params
-		$this->_get_args = array_merge($this->_get_args, $get);
-	}
-
-	/**
-	 * Parse POST
-	 */
-	protected function _parse_post()
-	{
-		$this->_post_args = $_POST;
-
-		$this->request->format and $this->request->body = file_get_contents('php://input');
-	}
-
-	/**
-	 * Parse PUT
-	 */
-	protected function _parse_put()
-	{
-		// It might be a HTTP body
-		if ($this->request->format)
-		{
-			$this->request->body = file_get_contents('php://input');
+		// If whitelist is enabled it has the first chance to kick them out
+		if (config_item('rest_ip_whitelist_enabled')) {
+			$this->_check_whitelist_auth();
 		}
 
-		// If no file type is provided, this is probably just arguments
-		else
+		$username = NULL;
+		$password = NULL;
+
+		// mod_php
+		if ($this->input->server('PHP_AUTH_USER')) {
+			$username = $this->input->server('PHP_AUTH_USER');
+			$password = $this->input->server('PHP_AUTH_PW');
+		} // most other servers
+		elseif ($this->input->server('HTTP_AUTHENTICATION'))
 		{
-			parse_str(file_get_contents('php://input'), $this->_put_args);
+			if (strpos(strtolower($this->input->server('HTTP_AUTHENTICATION')), 'basic') === 0) {
+				list($username, $password) = explode(':', base64_decode(substr($this->input->server('HTTP_AUTHORIZATION'), 6)));
+			}
+		}
+
+		if (!$this->_check_login($username, $password))
+		{
+			$this->_force_login();
 		}
 	}
 
 	/**
-	 * Parse DELETE
+	 * Check if the client's ip is in the 'rest_ip_whitelist' config
 	 */
-	protected function _parse_delete()
+	protected function _check_whitelist_auth()
 	{
-		// Set up out DELETE variables (which shouldn't really exist, but sssh!)
-		parse_str(file_get_contents('php://input'), $this->_delete_args);
+		$whitelist = explode(',', config_item('rest_ip_whitelist'));
+
+		array_push($whitelist, '127.0.0.1', '0.0.0.0');
+
+		foreach ($whitelist AS &$ip)
+		{
+			$ip = trim($ip);
+		}
+
+		if (!in_array($this->input->ip_address(), $whitelist)) {
+			$this->response(array('status' => false, 'error' => 'Not authorized'), 401);
+		}
 	}
 
-	// INPUT FUNCTION --------------------------------------------------------------
-
 	/**
-	 * Retrieve a value from the GET request arguments.
+	 * Response
 	 *
-	 * @param string $key The key for the GET request argument to retrieve
-	 * @param boolean $xss_clean Whether the value should be XSS cleaned or not.
-	 * @return string The GET argument value.
+	 * Takes pure data and optionally a status code, then creates the response.
+	 *
+	 * @param array $data
+	 * @param null|int $http_code
 	 */
-	protected function _get($key = NULL, $xss_clean = TRUE)
+	public function response($data = array(), $http_code = null)
 	{
-		if ($key === NULL)
+		global $CFG;
+
+		// If data is empty and not code provide, error and bail
+		if (empty($data) && $http_code === null)
 		{
-			return $this->_get_args;
+			$http_code = 404;
+
+			// create the output variable here in the case of $this->response(array());
+			$output = NULL;
+		} // If data is empty but http code provided, keep the output empty
+		else if (empty($data) && is_numeric($http_code)) {
+			$output = NULL;
+		} // Otherwise (if no data but 200 provided) or some data, carry on camping!
+		else {
+			// Is compression requested?
+			if ($CFG->item('compress_output') === TRUE && $this->_zlib_oc == FALSE) {
+				if (extension_loaded('zlib')) {
+					if (isset($_SERVER['HTTP_ACCEPT_ENCODING']) AND strpos($_SERVER['HTTP_ACCEPT_ENCODING'], 'gzip') !== FALSE) {
+						ob_start('ob_gzhandler');
+					}
+				}
+			}
+
+			is_numeric($http_code) OR $http_code = 200;
+
+			// If the format method exists, call and return the output in that format
+			if (method_exists($this, '_format_' . $this->response->format)) {
+				// Set the correct format header
+				header('Content-Type: ' . $this->_supported_formats[$this->response->format]);
+
+				$output = $this->{'_format_' . $this->response->format}($data);
+			} // If the format method exists, call and return the output in that format
+			elseif (method_exists($this->format, 'to_' . $this->response->format)) {
+				// Set the correct format header
+				header('Content-Type: ' . $this->_supported_formats[$this->response->format]);
+
+				$output = $this->format->factory($data)->{'to_' . $this->response->format}();
+			} // Format not supported, output directly
+			else {
+				$output = $data;
+			}
 		}
 
-		return array_key_exists($key, $this->_get_args) ? $this->_xss_clean($this->_get_args[$key], $xss_clean) : FALSE;
+		header('HTTP/1.1: ' . $http_code);
+		header('Status: ' . $http_code);
+
+		// If zlib.output_compression is enabled it will compress the output,
+		// but it will not modify the content-length header to compensate for
+		// the reduction, causing the browser to hang waiting for more data.
+		// We'll just skip content-length in those cases.
+		if (!$this->_zlib_oc && !$CFG->item('compress_output'))
+		{
+			header('Content-Length: ' . strlen($output));
+		}
+
+		exit($output);
 	}
 
 	/**
-	 * Retrieve a value from the POST request arguments.
+	 * Check if the user is logged in.
 	 *
-	 * @param string $key The key for the POST request argument to retrieve
-	 * @param boolean $xss_clean Whether the value should be XSS cleaned or not.
-	 * @return string The POST argument value.
+	 * @param string $username The user's name
+	 * @param string $password The user's password
+	 * @return boolean
 	 */
-	protected function _post($key = NULL, $xss_clean = TRUE)
+	protected function _check_login($username = '', $password = NULL)
 	{
-		if ($key === NULL)
+		if (empty($username))
 		{
-			return $this->_post_args;
+			return FALSE;
 		}
 
-		return array_key_exists($key, $this->_post_args) ? $this->_xss_clean($this->_post_args[$key], $xss_clean) : FALSE;
-	}
+		$auth_source = strtolower($this->config->item('auth_source'));
 
-	/**
-	 * Retrieve a value from the PUT request arguments.
-	 *
-	 * @param string $key The key for the PUT request argument to retrieve
-	 * @param boolean $xss_clean Whether the value should be XSS cleaned or not.
-	 * @return string The PUT argument value.
-	 */
-	protected function _put($key = NULL, $xss_clean = TRUE)
-	{
-		if ($key === NULL)
-		{
-			return $this->_put_args;
+		if ($auth_source == 'ldap') {
+			log_message('debug', 'performing LDAP authentication for $username');
+			return $this->_perform_ldap_auth($username, $password);
 		}
 
-		return array_key_exists($key, $this->_put_args) ? $this->_xss_clean($this->_put_args[$key], $xss_clean) : FALSE;
-	}
+		$valid_logins = &$this->config->item('rest_valid_logins');
 
-	/**
-	 * Retrieve a value from the DELETE request arguments.
-	 *
-	 * @param string $key The key for the DELETE request argument to retrieve
-	 * @param boolean $xss_clean Whether the value should be XSS cleaned or not.
-	 * @return string The DELETE argument value.
-	 */
-	protected function _delete($key = NULL, $xss_clean = TRUE)
-	{
-		if ($key === NULL)
-		{
-			return $this->_delete_args;
+		if (!array_key_exists($username, $valid_logins)) {
+			return FALSE;
 		}
 
-		return array_key_exists($key, $this->_delete_args) ? $this->_xss_clean($this->_delete_args[$key], $xss_clean) : FALSE;
-	}
-
-	/**
-	 * Process to protect from XSS attacks.
-	 *
-	 * @param string $val The input.
-	 * @param boolean $process Do clean or note the input.
-	 * @return string
-	 */
-	protected function _xss_clean($val, $process)
-	{
-		if (CI_VERSION < 2)
-		{
-			return $process ? $this->input->xss_clean($val) : $val;
+		// If actually NULL (not empty string) then do not check it
+		if ($password !== NULL AND $valid_logins[$username] != $password) {
+			return FALSE;
 		}
 
-		return $process ? $this->security->xss_clean($val) : $val;
+		return TRUE;
 	}
-
-	/**
-	 * Retrieve the validation errors.
-	 *
-	 * @return array
-	 */
-	public function validation_errors()
-	{
-		$string = strip_tags($this->form_validation->error_string());
-
-		return explode("\n", trim($string, "\n"));
-	}
-
-	// SECURITY FUNCTIONS ---------------------------------------------------------
 
 	/**
 	 * Perform LDAP Authentication
@@ -1075,77 +738,21 @@ abstract class REST_Controller extends CI_Controller
 	}
 
 	/**
-	 * Check if the user is logged in.
+	 * @todo Document this.
 	 *
-	 * @param string $username The user's name
-	 * @param string $password The user's password
-	 * @return boolean
+	 * @param string $nonce
 	 */
-	protected function _check_login($username = '', $password = NULL)
+	protected function _force_login($nonce = '')
 	{
-		if (empty($username))
+		if ($this->config->item('rest_auth') == 'basic')
 		{
-			return FALSE;
+			header('WWW-Authenticate: Basic realm="' . $this->config->item('rest_realm') . '"');
+		} elseif ($this->config->item('rest_auth') == 'digest')
+		{
+			header('WWW-Authenticate: Digest realm="' . $this->config->item('rest_realm') . '", qop="auth", nonce="' . $nonce . '", opaque="' . md5($this->config->item('rest_realm')) . '"');
 		}
 
-		$auth_source = strtolower($this->config->item('auth_source'));
-
-		if ($auth_source == 'ldap')
-		{
-			log_message('debug', 'performing LDAP authentication for $username');
-			return $this->_perform_ldap_auth($username, $password);
-		}
-
-		$valid_logins = & $this->config->item('rest_valid_logins');
-
-		if ( ! array_key_exists($username, $valid_logins))
-		{
-			return FALSE;
-		}
-
-		// If actually NULL (not empty string) then do not check it
-		if ($password !== NULL AND $valid_logins[$username] != $password)
-		{
-			return FALSE;
-		}
-
-		return TRUE;
-	}
-
-	/**
-	 * @todo document this.
-	 */
-	protected function _prepare_basic_auth()
-	{
-		// If whitelist is enabled it has the first chance to kick them out
-		if (config_item('rest_ip_whitelist_enabled'))
-		{
-			$this->_check_whitelist_auth();
-		}
-
-		$username = NULL;
-		$password = NULL;
-
-		// mod_php
-		if ($this->input->server('PHP_AUTH_USER'))
-		{
-			$username = $this->input->server('PHP_AUTH_USER');
-			$password = $this->input->server('PHP_AUTH_PW');
-		}
-
-		// most other servers
-		elseif ($this->input->server('HTTP_AUTHENTICATION'))
-		{
-			if (strpos(strtolower($this->input->server('HTTP_AUTHENTICATION')), 'basic') === 0)
-			{
-				list($username, $password) = explode(':', base64_decode(substr($this->input->server('HTTP_AUTHORIZATION'), 6)));
-			}
-		}
-
-		if ( ! $this->_check_login($username, $password))
-		{
-			$this->_force_login();
-		}
+		$this->response(array('status' => false, 'error' => 'Not authorized'), 401);
 	}
 
 	/**
@@ -1208,42 +815,365 @@ abstract class REST_Controller extends CI_Controller
 	}
 
 	/**
-	 * Check if the client's ip is in the 'rest_ip_whitelist' config
+	 * Detect API Key
+	 *
+	 * See if the user has provided an API key
+	 *
+	 * @return boolean
 	 */
-	protected function _check_whitelist_auth()
+	protected function _detect_api_key()
 	{
-		$whitelist = explode(',', config_item('rest_ip_whitelist'));
+		// Get the api key name variable set in the rest config file
+		$api_key_variable = config_item('rest_key_name');
 
-		array_push($whitelist, '127.0.0.1', '0.0.0.0');
+		// Work out the name of the SERVER entry based on config
+		$key_name = 'HTTP_' . strtoupper(str_replace('-', '_', $api_key_variable));
 
-		foreach ($whitelist AS &$ip)
+		$this->rest->key = NULL;
+		$this->rest->level = NULL;
+		$this->rest->user_id = NULL;
+		$this->rest->ignore_limits = FALSE;
+
+		// Find the key from server or arguments
+		if (($key = isset($this->_args[$api_key_variable]) ? $this->_args[$api_key_variable] : $this->input->server($key_name)))
 		{
-			$ip = trim($ip);
+			if (!($row = $this->rest->db->where(config_item('rest_key_column'), $key)->get(config_item('rest_keys_table'))->row())) {
+				return FALSE;
+			}
+
+			$this->rest->key = $row->{config_item('rest_key_column')};
+
+			isset($row->user_id) AND $this->rest->user_id = $row->user_id;
+			isset($row->level) AND $this->rest->level = $row->level;
+			isset($row->ignore_limits) AND $this->rest->ignore_limits = $row->ignore_limits;
+
+			/*
+			 * If "is private key" is enabled, compare the ip address with the list
+			 * of valid ip addresses stored in the database.
+			 */
+			if (!empty($row->is_private_key)) {
+				// Check for a list of valid ip addresses
+				if (isset($row->ip_addresses)) {
+					// multiple ip addresses must be separated using a comma, explode and loop
+					$list_ip_addresses = explode(",", $row->ip_addresses);
+					$found_address = FALSE;
+
+					foreach ($list_ip_addresses as $ip_address) {
+						if ($this->input->ip_address() == trim($ip_address)) {
+							// there is a match, set the the value to true and break out of the loop
+							$found_address = TRUE;
+							break;
+						}
+					}
+
+					return $found_address;
+				} else {
+					// There should be at least one IP address for this private key.
+					return FALSE;
+				}
+			}
+
+			return $row;
 		}
 
-		if ( ! in_array($this->input->ip_address(), $whitelist))
-		{
-			$this->response(array('status' => false, 'error' => 'Not authorized'), 401);
-		}
+		// No key has been sent
+		return FALSE;
 	}
 
 	/**
-	 * @todo Document this.
+	 * Remap
 	 *
-	 * @param string $nonce
+	 * Requests are not made to methods directly, the request will be for
+	 * an "object". This simply maps the object and method to the correct
+	 * Controller method.
+	 *
+	 * @param string $object_called
+	 * @param array $arguments The arguments passed to the controller method.
 	 */
-	protected function _force_login($nonce = '')
+	public function _remap($object_called, $arguments)
 	{
-		if ($this->config->item('rest_auth') == 'basic')
+		// Should we answer if not over SSL?
+		if (config_item('force_https') AND !$this->_detect_ssl())
 		{
-			header('WWW-Authenticate: Basic realm="'.$this->config->item('rest_realm').'"');
-		}
-		elseif ($this->config->item('rest_auth') == 'digest')
-		{
-			header('WWW-Authenticate: Digest realm="'.$this->config->item('rest_realm').'", qop="auth", nonce="'.$nonce.'", opaque="'.md5($this->config->item('rest_realm')).'"');
+			$this->response(array('status' => false, 'error' => 'Unsupported protocol'), 403);
 		}
 
-		$this->response(array('status' => false, 'error' => 'Not authorized'), 401);
+		// The object called is not reference by the controller and not a parameter to a single controller.
+		/*
+		$pattern = '/^(.*)\.('.implode('|', array_keys($this->_supported_formats)).')$/';
+		if (preg_match($pattern, $object_called, $matches))
+		{
+			$object_called = $matches[1];
+		}
+		*/
+
+		$request_method = $this->request->method;
+		$action = $this->router->fetch_method();
+
+		// TODO - need to do customizations here
+		$controller_method = $action . "_" . $this->request->method;
+
+
+		// Do we want to log this method (if allowed by config)?
+		$log_method = !(isset($this->methods[$controller_method]['log']) AND $this->methods[$controller_method]['log'] == FALSE);
+
+		// Use keys for this method?
+		$use_key = !(isset($this->methods[$controller_method]['key']) AND $this->methods[$controller_method]['key'] == FALSE);
+
+		// Get that useless shitty key out of here
+		if (config_item('rest_enable_keys') AND $use_key AND $this->_allow === FALSE) {
+			if (config_item('rest_enable_logging') AND $log_method) {
+				$this->_log_request();
+			}
+
+			$this->response(array('status' => false, 'error' => 'Invalid API Key.'), 403);
+		}
+
+		// Sure it exists, but can they do anything with it?
+		if (!method_exists($this, $controller_method)) {
+			$this->response(array('status' => false, 'error' => 'Unknown method.'), 404);
+		}
+
+		// Doing key related stuff? Can only do it if they have a key right?
+		if (config_item('rest_enable_keys') AND !empty($this->rest->key)) {
+			// Check the limit
+			if (config_item('rest_enable_limits') AND !$this->_check_limit($controller_method)) {
+				$this->response(array('status' => false, 'error' => 'This API key has reached the hourly limit for this method.'), 401);
+			}
+
+			// If no level is set use 0, they probably aren't using permissions
+			$level = isset($this->methods[$controller_method]['level']) ? $this->methods[$controller_method]['level'] : 0;
+
+			// If no level is set, or it is lower than/equal to the key's level
+			$authorized = $level <= $this->rest->level;
+
+			// IM TELLIN!
+			if (config_item('rest_enable_logging') AND $log_method) {
+				$this->_log_request($authorized);
+			}
+
+			// They don't have good enough perms
+			$authorized OR $this->response(array('status' => false, 'error' => 'This API key does not have enough permissions.'), 401);
+		} // No key stuff, but record that stuff is happening
+		else if (config_item('rest_enable_logging') AND $log_method) {
+			$this->_log_request($authorized = TRUE);
+		}
+
+		// And...... GO!
+		$this->_fire_method(array($this, $controller_method), $arguments);
+	}
+
+	/**
+	 * Log request
+	 *
+	 * Record the entry for awesomeness purposes
+	 *
+	 * @param boolean $authorized
+	 * @return object
+	 */
+	protected function _log_request($authorized = FALSE)
+	{
+		return $this->rest->db->insert(config_item('rest_logs_table'), array(
+			'uri' => $this->uri->uri_string(),
+			'method' => $this->request->method,
+			'params' => $this->_args ? (config_item('rest_logs_json_params') ? json_encode($this->_args) : serialize($this->_args)) : null,
+			'api_key' => isset($this->rest->key) ? $this->rest->key : '',
+			'ip_address' => $this->input->ip_address(),
+			'time' => function_exists('now') ? now() : time(),
+			'authorized' => $authorized
+		));
+	}
+
+	// INPUT FUNCTION --------------------------------------------------------------
+
+	/**
+	 * Limiting requests
+	 *
+	 * Check if the requests are coming in a tad too fast.
+	 *
+	 * @param string $controller_method The method being called.
+	 * @return boolean
+	 */
+	protected function _check_limit($controller_method)
+	{
+		// They are special, or it might not even have a limit
+		if (!empty($this->rest->ignore_limits) OR !isset($this->methods[$controller_method]['limit']))
+		{
+			// On your way sonny-jim.
+			return TRUE;
+		}
+
+		// How many times can you get to this method an hour?
+		$limit = $this->methods[$controller_method]['limit'];
+
+		// Get data on a keys usage
+		$result = $this->rest->db
+			->where('uri', $this->uri->uri_string())
+			->where('api_key', $this->rest->key)
+			->get(config_item('rest_limits_table'))
+			->row();
+
+		// No calls yet, or been an hour since they called
+		if (!$result OR $result->hour_started < time() - (60 * 60))
+		{
+			// Right, set one up from scratch
+			$this->rest->db->insert(config_item('rest_limits_table'), array(
+				'uri' => $this->uri->uri_string(),
+				'api_key' => isset($this->rest->key) ? $this->rest->key : '',
+				'count' => 1,
+				'hour_started' => time()
+			));
+		} // They have called within the hour, so lets update
+		else {
+			// Your luck is out, you've called too many times!
+			if ($result->count >= $limit) {
+				return FALSE;
+			}
+
+			$this->rest->db
+				->where('uri', $this->uri->uri_string())
+				->where('api_key', $this->rest->key)
+				->set('count', 'count + 1', FALSE)
+				->update(config_item('rest_limits_table'));
+		}
+
+		return TRUE;
+	}
+
+	/**
+	 * Fire Method
+	 *
+	 * Fires the designated controller method with the given arguments.
+	 *
+	 * @param array $method The controller method to fire
+	 * @param array $args The arguments to pass to the controller method
+	 */
+	protected function _fire_method($method, $args)
+	{
+		call_user_func_array($method, $args);
+	}
+
+	/**
+	 * Retrieve the validation errors.
+	 *
+	 * @return array
+	 */
+	public function validation_errors()
+	{
+		$string = strip_tags($this->form_validation->error_string());
+
+		return explode("\n", trim($string, "\n"));
+	}
+
+	/**
+	 * Parse GET
+	 */
+	protected function _parse_get()
+	{
+		// Grab proper GET variables
+		parse_str(parse_url($_SERVER['REQUEST_URI'], PHP_URL_QUERY), $get);
+
+		// Merge both the URI segments and GET params
+		$this->_get_args = array_merge($this->_get_args, $get);
+	}
+
+	/**
+	 * Parse POST
+	 */
+	protected function _parse_post()
+	{
+		$this->_post_args = $_POST;
+
+		$this->request->format and $this->request->body = file_get_contents('php://input');
+	}
+
+	/**
+	 * Parse PUT
+	 */
+	protected function _parse_put()
+	{
+		// It might be a HTTP body
+		if ($this->request->format) {
+			$this->request->body = file_get_contents('php://input');
+		} // If no file type is provided, this is probably just arguments
+		else {
+			parse_str(file_get_contents('php://input'), $this->_put_args);
+		}
+	}
+
+	// SECURITY FUNCTIONS ---------------------------------------------------------
+
+	/**
+	 * Parse DELETE
+	 */
+	protected function _parse_delete()
+	{
+		// Set up out DELETE variables (which shouldn't really exist, but sssh!)
+		parse_str(file_get_contents('php://input'), $this->_delete_args);
+	}
+
+	/**
+	 * Retrieve a value from the POST request arguments.
+	 *
+	 * @param string $key The key for the POST request argument to retrieve
+	 * @param boolean $xss_clean Whether the value should be XSS cleaned or not.
+	 * @return string The POST argument value.
+	 */
+	protected function _post($key = NULL, $xss_clean = TRUE)
+	{
+		if ($key === NULL) {
+			return $this->_post_args;
+		}
+
+		return array_key_exists($key, $this->_post_args) ? $this->_xss_clean($this->_post_args[$key], $xss_clean) : FALSE;
+	}
+
+	/**
+	 * Process to protect from XSS attacks.
+	 *
+	 * @param string $val The input.
+	 * @param boolean $process Do clean or note the input.
+	 * @return string
+	 */
+	protected function _xss_clean($val, $process)
+	{
+		if (CI_VERSION < 2) {
+			return $process ? $this->input->xss_clean($val) : $val;
+		}
+
+		return $process ? $this->security->xss_clean($val) : $val;
+	}
+
+	/**
+	 * Retrieve a value from the PUT request arguments.
+	 *
+	 * @param string $key The key for the PUT request argument to retrieve
+	 * @param boolean $xss_clean Whether the value should be XSS cleaned or not.
+	 * @return string The PUT argument value.
+	 */
+	protected function _put($key = NULL, $xss_clean = TRUE)
+	{
+		if ($key === NULL) {
+			return $this->_put_args;
+		}
+
+		return array_key_exists($key, $this->_put_args) ? $this->_xss_clean($this->_put_args[$key], $xss_clean) : FALSE;
+	}
+
+	/**
+	 * Retrieve a value from the DELETE request arguments.
+	 *
+	 * @param string $key The key for the DELETE request argument to retrieve
+	 * @param boolean $xss_clean Whether the value should be XSS cleaned or not.
+	 * @return string The DELETE argument value.
+	 */
+	protected function _delete($key = NULL, $xss_clean = TRUE)
+	{
+		if ($key === NULL) {
+			return $this->_delete_args;
+		}
+
+		return array_key_exists($key, $this->_delete_args) ? $this->_xss_clean($this->_delete_args[$key], $xss_clean) : FALSE;
 	}
 
 	/**
@@ -1263,9 +1193,6 @@ abstract class REST_Controller extends CI_Controller
 		return $data;
 	}
 
-	// FORMATING FUNCTIONS ---------------------------------------------------------
-	// Many of these have been moved to the Format class for better separation, but these methods will be checked too
-
 	/**
 	 * Encode as JSONP
 	 *
@@ -1275,6 +1202,25 @@ abstract class REST_Controller extends CI_Controller
 	protected function _format_jsonp($data = array())
 	{
 		return $this->_get('callback').'('.json_encode($data).')';
+	}
+
+	// FORMATING FUNCTIONS ---------------------------------------------------------
+	// Many of these have been moved to the Format class for better separation, but these methods will be checked too
+
+	/**
+	 * Retrieve a value from the GET request arguments.
+	 *
+	 * @param string $key The key for the GET request argument to retrieve
+	 * @param boolean $xss_clean Whether the value should be XSS cleaned or not.
+	 * @return string The GET argument value.
+	 */
+	protected function _get($key = NULL, $xss_clean = TRUE)
+	{
+		if ($key === NULL) {
+			return $this->_get_args;
+		}
+
+		return array_key_exists($key, $this->_get_args) ? $this->_xss_clean($this->_get_args[$key], $xss_clean) : FALSE;
 	}
 
 }
