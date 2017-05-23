@@ -1,4 +1,4 @@
-# codeigniterSwaggerApi
+# codeigniterSwaggerApi Documentation
 Codeigniter with Swagger Integration
 
 
