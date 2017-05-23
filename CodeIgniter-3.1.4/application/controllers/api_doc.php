@@ -5,7 +5,7 @@
  * File: api_doc.php
  * Type: Controller
  * Created by: Hafiz Haseeb Ali
- * Description: This is controller to handle User functions
+ * Description: This is controller to handle User functionss
  * ---------------------------------------------------------------------------------------
  */
 
